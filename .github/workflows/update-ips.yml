@@ -18,7 +18,7 @@ on:
       country:
         description: '目标国家代码'
         required: false
-        default: 'JP'
+        default: 'US'
         type: string
       count:
         description: '目标IP数量'
