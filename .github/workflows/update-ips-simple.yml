@@ -1,17 +1,14 @@
-name: Update Cloudflare IPs
+name: Update Cloudflare IPs (Simple)
 
-# 添加权限设置
 permissions:
   contents: write
   actions: read
-  issues: write
-  pull-requests: write
 
 on:
   # 定时触发：每天北京时间早上8点（UTC 0点）
   schedule:
     - cron: '0 0 * * *'
-
+  
   # 手动触发
   workflow_dispatch:
     inputs:
@@ -30,11 +27,6 @@ on:
         required: false
         default: '443'
         type: string
-      max_ips:
-        description: '每个库最大IP数量'
-        required: false
-        default: '512'
-        type: string
 
 jobs:
   update-ips:
@@ -52,17 +44,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install aiohttp
-        pip install requests  # 备用HTTP库
-
-    - name: Test network connectivity
-      run: |
-        echo "🌐 测试网络连接..."
-        echo "Testing DNS resolution..."
-        nslookup 1.1.1.1 || echo "DNS resolution failed"
-        echo "Testing HTTP connectivity..."
-        curl -I --connect-timeout 5 https://1.1.1.1/dns-query || echo "Cloudflare DNS API 连接失败"
-        curl -I --connect-timeout 5 https://www.cloudflare.com || echo "Cloudflare 网站连接失败"
+        pip install aiohttp requests
         
     - name: Set parameters
       id: params
@@ -71,24 +53,21 @@ jobs:
         COUNTRY="${{ github.event.inputs.country || 'CN' }}"
         COUNT="${{ github.event.inputs.count || '10' }}"
         PORT="${{ github.event.inputs.port || '443' }}"
-        MAX_IPS="${{ github.event.inputs.max_ips || '512' }}"
 
         echo "country=$COUNTRY" >> $GITHUB_OUTPUT
         echo "count=$COUNT" >> $GITHUB_OUTPUT
         echo "port=$PORT" >> $GITHUB_OUTPUT
-        echo "max_ips=$MAX_IPS" >> $GITHUB_OUTPUT
 
         echo "Parameters set:"
         echo "Country: $COUNTRY"
         echo "Count: $COUNT"
         echo "Port: $PORT"
-        echo "Max IPs per source: $MAX_IPS"
         
     - name: Run IP optimizer
       run: |
         echo "🚀 开始运行IP优选脚本..."
         echo "参数: 国家=${{ steps.params.outputs.country }}, 数量=${{ steps.params.outputs.count }}, 端口=${{ steps.params.outputs.port }}"
-
+        
         python ip_optimizer.py \
           --country "${{ steps.params.outputs.country }}" \
           --count "${{ steps.params.outputs.count }}" \
@@ -104,12 +83,12 @@ jobs:
     - name: Check if nodes.txt was created
       run: |
         if [ -f "nodes.txt" ]; then
-          echo "nodes.txt created successfully"
+          echo "✅ nodes.txt created successfully"
           echo "File size: $(wc -l < nodes.txt) lines"
-          echo "First 5 lines:"
-          head -5 nodes.txt
+          echo "Content preview:"
+          head -10 nodes.txt
         else
-          echo "nodes.txt was not created"
+          echo "❌ nodes.txt was not created"
           exit 1
         fi
         
@@ -119,39 +98,14 @@ jobs:
         git config --local user.name "GitHub Action"
         
         # 检查是否有变化
-        if git diff --quiet nodes.txt; then
+        if git diff --quiet nodes.txt 2>/dev/null; then
           echo "No changes to commit"
         else
           git add nodes.txt
           git commit -m "Auto update nodes.txt - ${{ steps.params.outputs.count }} ${{ steps.params.outputs.country }} IPs ($(date '+%Y-%m-%d %H:%M:%S'))"
           git push
-          echo "Changes committed and pushed"
+          echo "✅ Changes committed and pushed"
         fi
-        
-    - name: Create release (optional)
-      if: github.event_name == 'workflow_dispatch'
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: nodes-${{ steps.params.outputs.country }}-${{ github.run_number }}
-        name: ${{ steps.params.outputs.country }} Nodes - ${{ github.run_number }}
-        body: |
-          自动更新的 ${{ steps.params.outputs.country }} 国家 Cloudflare IP 节点列表
-
-          **参数信息:**
-          - 国家: ${{ steps.params.outputs.country }}
-          - 目标数量: ${{ steps.params.outputs.count }}
-          - 端口: ${{ steps.params.outputs.port }}
-          - 每库最大IP数: 50
-          - 更新时间: ${{ github.run_id }}
-
-          **文件说明:**
-          - `nodes.txt`: 包含优选的IP节点列表，按延迟排序
-          - 脚本遍历所有IP库直到找到指定数量的目标国家IP
-        files: nodes.txt
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
     - name: Upload nodes.txt as artifact
       uses: actions/upload-artifact@v4
@@ -168,7 +122,6 @@ jobs:
         echo "- **目标国家**: ${{ steps.params.outputs.country }}" >> $GITHUB_STEP_SUMMARY
         echo "- **目标数量**: ${{ steps.params.outputs.count }}" >> $GITHUB_STEP_SUMMARY
         echo "- **端口**: ${{ steps.params.outputs.port }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **每库最大IP数**: ${{ steps.params.outputs.max_ips }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
         if [ -f "nodes.txt" ]; then
@@ -178,9 +131,9 @@ jobs:
           echo "- **文件大小**: $(du -h nodes.txt | cut -f1)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          echo "### 🔝 前5个最优节点" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔝 优选节点" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          head -5 nodes.txt >> $GITHUB_STEP_SUMMARY
+          cat nodes.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
         else
           echo "### ❌ 错误" >> $GITHUB_STEP_SUMMARY
