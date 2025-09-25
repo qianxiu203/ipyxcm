@@ -23,7 +23,7 @@ on:
       count:
         description: '目标IP数量'
         required: false
-        default: '10'
+        default: '6'
         type: string
       port:
         description: '目标端口'
