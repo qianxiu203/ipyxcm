@@ -1,0 +1,61 @@
+name: Test GitHub Actions Environment
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ master, main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install aiohttp requests
+        
+    - name: Test network connectivity
+      run: |
+        echo "🌐 测试网络连接..."
+        curl -I https://1.1.1.1/dns-query || echo "Cloudflare DNS 连接失败"
+        curl -I https://8.8.8.8/dns-query || echo "Google DNS 连接失败"
+        curl -I https://www.cloudflare.com || echo "Cloudflare 网站连接失败"
+        
+    - name: Test script syntax
+      run: |
+        echo "🔍 检查脚本语法..."
+        python -m py_compile ip_optimizer.py
+        echo "✅ 脚本语法正确"
+        
+    - name: Test basic functionality
+      run: |
+        echo "🧪 运行基础功能测试..."
+        python test_github_actions.py
+        
+    - name: Show results
+      run: |
+        if [ -f "test_github_nodes.txt" ]; then
+          echo "📋 测试结果:"
+          cat test_github_nodes.txt
+        else
+          echo "⚠️ 未生成测试结果文件"
+        fi
+        
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: |
+          test_github_nodes.txt
+          *.log
+        retention-days: 7

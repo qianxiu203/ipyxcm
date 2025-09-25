@@ -56,9 +56,18 @@ class CloudflareIPOptimizer:
         
     async def __aenter__(self):
         """异步上下文管理器入口"""
+        # 创建更宽松的连接器，适用于测试环境
+        connector = aiohttp.TCPConnector(
+            ssl=False,  # 在测试环境中禁用SSL验证
+            limit=100,
+            limit_per_host=50,
+            ttl_dns_cache=300,
+            use_dns_cache=True
+        )
+
         self.session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=10),
-            connector=aiohttp.TCPConnector(limit=100, limit_per_host=50)
+            connector=connector
         )
         await self._get_nip_domain()
         return self
@@ -70,23 +79,37 @@ class CloudflareIPOptimizer:
     
     async def _get_nip_domain(self) -> None:
         """获取NIP域名"""
-        try:
-            dns_query_url = "https://cloudflare-dns.com/dns-query?name=nip.090227.xyz&type=TXT"
-            headers = {'Accept': 'application/dns-json'}
-            
-            async with self.session.get(dns_query_url, headers=headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if data.get('Status') == 0 and data.get('Answer'):
-                        txt_record = data['Answer'][0]['data']
-                        self.nip_domain = txt_record.strip('"')
-                        print(f"通过DoH解析获取到域名: {self.nip_domain}")
-                        return
-        except Exception as e:
-            print(f"DoH解析失败，使用默认域名: {e}")
-        
-        # 备用域名
-        self.nip_domain = "nip.lfree.org"
+        # 尝试多个DoH服务器
+        doh_servers = [
+            "https://1.1.1.1/dns-query",
+            "https://8.8.8.8/dns-query",
+            "https://dns.google/dns-query",
+            "https://cloudflare-dns.com/dns-query"
+        ]
+
+        for doh_url in doh_servers:
+            try:
+                params = {
+                    'name': 'nip.090227.xyz',
+                    'type': 'TXT'
+                }
+                headers = {'Accept': 'application/dns-json'}
+
+                async with self.session.get(doh_url, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get('Status') == 0 and data.get('Answer'):
+                            txt_record = data['Answer'][0]['data']
+                            self.nip_domain = txt_record.strip('"')
+                            print(f"通过DoH解析获取到域名: {self.nip_domain}")
+                            return
+            except Exception:
+                continue
+
+        print(f"DoH解析失败，使用默认域名")
+        # 备用域名列表
+        backup_domains = ["nip.lfree.org", "ip.090227.xyz", "nip.top"]
+        self.nip_domain = backup_domains[0]
     
     async def get_cf_ips(self, ip_source: str = "official", target_port: str = "443") -> List[str]:
         """获取Cloudflare IP列表"""
@@ -368,7 +391,11 @@ class CloudflareIPOptimizer:
 
             start_time = time.time()
 
-            async with self.session.get(test_url, timeout=aiohttp.ClientTimeout(total=timeout)) as response:
+            async with self.session.get(
+                test_url,
+                timeout=aiohttp.ClientTimeout(total=timeout, connect=timeout/2),
+                allow_redirects=False
+            ) as response:
                 if response.status == 200:
                     latency = (time.time() - start_time) * 1000  # 转换为毫秒
                     response_text = await response.text()
@@ -396,6 +423,8 @@ class CloudflareIPOptimizer:
 
             return None
 
+        except asyncio.TimeoutError:
+            return None
         except Exception as e:
             return None
 
