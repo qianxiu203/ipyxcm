@@ -35,7 +35,13 @@ class CloudflareIPOptimizer:
     """Cloudflare IP优选器"""
     
     def __init__(self, target_country: str = "CN", max_ips: int = 512, max_concurrent: int = 32, target_count: int = 10):
-        self.target_country = target_country.upper()
+        # 支持多个国家，用逗号分隔
+        if ',' in target_country:
+            self.target_countries = [c.strip().upper() for c in target_country.split(',')]
+        else:
+            self.target_countries = [target_country.upper()]
+
+        self.target_country = target_country.upper()  # 保持兼容性
         self.max_ips = max_ips
         self.max_concurrent = max_concurrent
         self.target_count = target_count  # 目标IP数量
@@ -605,19 +611,21 @@ class CloudflareIPOptimizer:
                 if result:
                     results.append(result)
 
-                    # 检查是否是目标国家的IP
-                    if result.country == self.target_country:
+                    # 检查是否是目标国家的IP（支持多个国家）
+                    if result.country in self.target_countries:
                         country_results.append(result)
 
                         # 如果找到足够的目标国家IP，设置停止信号
                         if len(country_results) >= self.target_count:
-                            print(f"  🎯 已找到 {len(country_results)} 个 {self.target_country} IP，停止当前库的测试")
+                            countries_str = ', '.join(self.target_countries)
+                            print(f"  🎯 已找到 {len(country_results)} 个目标国家IP ({countries_str})，停止当前库的测试")
                             stop_event.set()
 
                 # 定期报告进度
                 if completed_tests % 20 == 0 or completed_tests == total_ips:
                     progress = (completed_tests / total_ips) * 100
-                    print(f"  📊 进度: {completed_tests}/{total_ips} ({progress:.1f}%) - {self.target_country} IP: {len(country_results)}")
+                    countries_str = ', '.join(self.target_countries)
+                    print(f"  📊 进度: {completed_tests}/{total_ips} ({progress:.1f}%) - 目标国家IP ({countries_str}): {len(country_results)}")
 
                 return result
 
@@ -631,8 +639,9 @@ class CloudflareIPOptimizer:
 
     async def get_country_ips_from_all_sources(self, target_port: str = "443") -> List[IPResult]:
         """遍历所有IP库获取指定国家的IP，直到找到目标数量"""
-        print(f"🌍 开始遍历所有IP库获取 {self.target_country} 国家的IP")
-        print(f"🎯 目标: 找到 {self.target_count} 个 {self.target_country} 国家的IP")
+        countries_str = ', '.join(self.target_countries)
+        print(f"🌍 开始遍历所有IP库获取 {countries_str} 国家的IP")
+        print(f"🎯 目标: 找到 {self.target_count} 个目标国家的IP")
         print(f"📊 配置信息: 端口={target_port}, 最大IP数={self.max_ips}, 并发数={self.max_concurrent}")
         print("-" * 60)
 
@@ -675,7 +684,8 @@ class CloudflareIPOptimizer:
 
         print(f"\n" + "=" * 60)
         print(f"🏁 搜索完成！")
-        print(f"📊 最终结果: 找到 {len(final_results)} 个 {self.target_country} 国家的优质IP")
+        countries_str = ', '.join(self.target_countries)
+        print(f"📊 最终结果: 找到 {len(final_results)} 个目标国家 ({countries_str}) 的优质IP")
 
         if final_results:
             print(f"⚡ 延迟范围: {final_results[0].latency:.0f}ms - {final_results[-1].latency:.0f}ms")
@@ -700,8 +710,8 @@ class CloudflareIPOptimizer:
             if not results:
                 return []
 
-            # 筛选目标国家的IP
-            country_results = [r for r in results if r.country == self.target_country]
+            # 筛选目标国家的IP（支持多个国家）
+            country_results = [r for r in results if r.country in self.target_countries]
 
             # 按延迟排序
             country_results.sort(key=lambda x: x.latency)
@@ -734,7 +744,7 @@ class CloudflareIPOptimizer:
 async def main():
     """主函数"""
     parser = argparse.ArgumentParser(description='Cloudflare IP优选脚本 - 遍历所有IP库获取指定国家IP')
-    parser.add_argument('--country', '-c', default='CN', help='目标国家代码 (默认: CN)')
+    parser.add_argument('--country', '-c', default='CN', help='目标国家代码，支持多个国家用逗号分隔 (默认: CN, 例如: JP,SG,US)')
     parser.add_argument('--count', '-n', type=int, default=10, help='目标IP数量 (默认: 10)')
     parser.add_argument('--port', '-p', default='443', help='目标端口 (默认: 443)')
     parser.add_argument('--max-ips', '-m', type=int, default=512, help='每个库最大IP数量 (默认: 512)')
@@ -772,7 +782,8 @@ async def main():
                 # 显示统计信息
                 print("\n" + "=" * 60)
                 print("📊 最终统计:")
-                print(f"✅ 成功找到 {len(results)} 个 {args.country} 国家的优质IP")
+                countries_str = ', '.join([c.strip() for c in args.country.split(',')])
+                print(f"✅ 成功找到 {len(results)} 个目标国家 ({countries_str}) 的优质IP")
                 if results:
                     print(f"⚡ 延迟范围: {results[0].latency:.0f}ms - {results[-1].latency:.0f}ms")
                     print(f"⚡ 平均延迟: {sum(r.latency for r in results) / len(results):.0f}ms")
@@ -785,7 +796,8 @@ async def main():
                 print(f"\n💾 结果已保存到: {args.output}")
 
             else:
-                print(f"❌ 遍历所有IP库后，未找到任何 {args.country} 国家的有效IP")
+                countries_str = ', '.join([c.strip() for c in args.country.split(',')])
+                print(f"❌ 遍历所有IP库后，未找到任何目标国家 ({countries_str}) 的有效IP")
                 print("💡 建议:")
                 print("   1. 检查网络连接")
                 print("   2. 尝试其他国家代码")
