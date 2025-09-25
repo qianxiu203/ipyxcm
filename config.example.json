@@ -1,0 +1,59 @@
+{
+  "target_country": "CN",
+  "ip_source": "official",
+  "target_port": "443",
+  "max_ips": 512,
+  "max_concurrent": 32,
+  "output_file": "nodes.txt",
+  "timeout": 5.0,
+  "retry_count": 3,
+  "sources": {
+    "official": {
+      "name": "Cloudflare官方IP列表",
+      "url": "https://www.cloudflare.com/ips-v4/",
+      "description": "Cloudflare官方发布的IPv4地址段"
+    },
+    "cm": {
+      "name": "CM整理IP列表", 
+      "url": "https://raw.githubusercontent.com/cmliu/cmliu/main/CF-CIDR.txt",
+      "description": "CM整理的Cloudflare IP段"
+    },
+    "as13335": {
+      "name": "AS13335 Cloudflare全段",
+      "url": "https://raw.githubusercontent.com/ipverse/asn-ip/master/as/13335/ipv4-aggregated.txt",
+      "description": "Cloudflare主要AS号段"
+    },
+    "as209242": {
+      "name": "AS209242 Cloudflare非官方",
+      "url": "https://raw.githubusercontent.com/ipverse/asn-ip/master/as/209242/ipv4-aggregated.txt", 
+      "description": "Cloudflare非官方AS段"
+    },
+    "proxyip": {
+      "name": "反代IP列表",
+      "url": "https://raw.githubusercontent.com/cmliu/ACL4SSR/main/baipiao.txt",
+      "description": "反向代理IP列表"
+    }
+  },
+  "countries": {
+    "CN": "中国",
+    "US": "美国", 
+    "JP": "日本",
+    "KR": "韩国",
+    "HK": "香港",
+    "TW": "台湾",
+    "SG": "新加坡",
+    "GB": "英国",
+    "DE": "德国",
+    "FR": "法国",
+    "AU": "澳大利亚",
+    "CA": "加拿大"
+  },
+  "ports": {
+    "443": "HTTPS默认端口",
+    "2053": "Cloudflare备用端口1",
+    "2083": "Cloudflare备用端口2", 
+    "2087": "Cloudflare备用端口3",
+    "2096": "Cloudflare备用端口4",
+    "8443": "Cloudflare备用端口5"
+  }
+}
