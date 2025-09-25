@@ -79,15 +79,21 @@ class CloudflareIPOptimizer:
     
     async def _get_nip_domain(self) -> None:
         """获取NIP域名"""
+        # 在GitHub Actions等CI环境中，直接使用已知的可用域名
+        import os
+        if os.environ.get('GITHUB_ACTIONS') == 'true':
+            print("检测到GitHub Actions环境，使用预设域名")
+            self.nip_domain = "nip.lfree.org"
+            return
+
         # 尝试多个DoH服务器
         doh_servers = [
-            "https://1.1.1.1/dns-query",
-            "https://8.8.8.8/dns-query",
-            "https://dns.google/dns-query",
-            "https://cloudflare-dns.com/dns-query"
+            ("https://1.1.1.1/dns-query", "Cloudflare"),
+            ("https://8.8.8.8/dns-query", "Google"),
+            ("https://dns.google/dns-query", "Google DNS"),
         ]
 
-        for doh_url in doh_servers:
+        for doh_url, provider in doh_servers:
             try:
                 params = {
                     'name': 'nip.090227.xyz',
@@ -95,21 +101,26 @@ class CloudflareIPOptimizer:
                 }
                 headers = {'Accept': 'application/dns-json'}
 
-                async with self.session.get(doh_url, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=5)) as response:
+                print(f"尝试通过 {provider} DoH 解析...")
+                async with self.session.get(doh_url, params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=3)) as response:
                     if response.status == 200:
                         data = await response.json()
                         if data.get('Status') == 0 and data.get('Answer'):
                             txt_record = data['Answer'][0]['data']
                             self.nip_domain = txt_record.strip('"')
-                            print(f"通过DoH解析获取到域名: {self.nip_domain}")
+                            print(f"✅ 通过 {provider} DoH解析获取到域名: {self.nip_domain}")
                             return
-            except Exception:
+                    else:
+                        print(f"❌ {provider} DoH 返回状态码: {response.status}")
+            except Exception as e:
+                print(f"❌ {provider} DoH 解析失败: {str(e)[:50]}...")
                 continue
 
-        print(f"DoH解析失败，使用默认域名")
-        # 备用域名列表
-        backup_domains = ["nip.lfree.org", "ip.090227.xyz", "nip.top"]
+        print("⚠️ 所有DoH解析都失败，使用备用域名")
+        # 备用域名列表，按可用性排序
+        backup_domains = ["nip.lfree.org", "ip.090227.xyz", "nip.top", "ip.sb"]
         self.nip_domain = backup_domains[0]
+        print(f"📡 使用备用域名: {self.nip_domain}")
     
     async def get_cf_ips(self, ip_source: str = "official", target_port: str = "443") -> List[str]:
         """获取Cloudflare IP列表"""
@@ -446,41 +457,69 @@ class CloudflareIPOptimizer:
 
     async def _get_country_from_colo(self, colo: str) -> str:
         """从colo获取国家代码"""
-        # Cloudflare colo到国家代码的映射
+        # 扩展的Cloudflare colo到国家代码的映射
         colo_to_country = {
-            # 中国大陆
-            'SJC': 'CN', 'LAX': 'CN', 'HKG': 'CN', 'NRT': 'CN', 'ICN': 'CN',
-            # 美国
+            # 美国 - 主要数据中心
             'ATL': 'US', 'BOS': 'US', 'BUF': 'US', 'CHI': 'US', 'DEN': 'US',
             'DFW': 'US', 'EWR': 'US', 'IAD': 'US', 'LAS': 'US', 'LAX': 'US',
             'MIA': 'US', 'MSP': 'US', 'ORD': 'US', 'PDX': 'US', 'PHX': 'US',
-            'SAN': 'US', 'SEA': 'US', 'SJC': 'US', 'STL': 'US',
+            'SAN': 'US', 'SEA': 'US', 'SJC': 'US', 'STL': 'US', 'IAH': 'US',
+
+            # 中国大陆和地区
+            'HKG': 'HK',  # 香港
+            'TPE': 'TW',  # 台湾
+
             # 日本
-            'NRT': 'JP', 'KIX': 'JP',
+            'NRT': 'JP', 'KIX': 'JP', 'ITM': 'JP',
+
             # 韩国
-            'ICN': 'KR',
-            # 香港
-            'HKG': 'HK',
-            # 台湾
-            'TPE': 'TW',
+            'ICN': 'KR', 'GMP': 'KR',
+
             # 新加坡
             'SIN': 'SG',
+
             # 英国
-            'LHR': 'GB', 'MAN': 'GB',
+            'LHR': 'GB', 'MAN': 'GB', 'EDI': 'GB',
+
             # 德国
-            'FRA': 'DE', 'DUS': 'DE',
+            'FRA': 'DE', 'DUS': 'DE', 'HAM': 'DE', 'MUC': 'DE',
+
             # 法国
             'CDG': 'FR', 'MRS': 'FR',
+
             # 荷兰
             'AMS': 'NL',
+
             # 澳大利亚
-            'SYD': 'AU', 'MEL': 'AU', 'PER': 'AU',
+            'SYD': 'AU', 'MEL': 'AU', 'PER': 'AU', 'BNE': 'AU',
+
             # 加拿大
-            'YYZ': 'CA', 'YVR': 'CA',
+            'YYZ': 'CA', 'YVR': 'CA', 'YUL': 'CA',
+
             # 巴西
-            'GRU': 'BR',
+            'GRU': 'BR', 'GIG': 'BR',
+
             # 印度
-            'BOM': 'IN', 'DEL': 'IN', 'MAA': 'IN',
+            'BOM': 'IN', 'DEL': 'IN', 'MAA': 'IN', 'BLR': 'IN',
+
+            # 其他欧洲国家
+            'ARN': 'SE',  # 瑞典
+            'CPH': 'DK',  # 丹麦
+            'OSL': 'NO',  # 挪威
+            'HEL': 'FI',  # 芬兰
+            'WAW': 'PL',  # 波兰
+            'PRG': 'CZ',  # 捷克
+            'VIE': 'AT',  # 奥地利
+            'ZUR': 'CH',  # 瑞士
+            'MAD': 'ES',  # 西班牙
+            'LIS': 'PT',  # 葡萄牙
+            'FCO': 'IT',  # 意大利
+            'ATH': 'GR',  # 希腊
+            'IST': 'TR',  # 土耳其
+            'SVO': 'RU',  # 俄罗斯
+            'VNO': 'LT',  # 立陶宛
+            'RIX': 'LV',  # 拉脱维亚
+            'TLL': 'EE',  # 爱沙尼亚
         }
 
         # 尝试从映射表获取国家代码
@@ -488,20 +527,19 @@ class CloudflareIPOptimizer:
         if country:
             return country
 
-        # 如果映射表中没有，尝试通过Cloudflare位置API获取
-        try:
-            url = "https://speed.cloudflare.com/locations"
-            async with self.session.get(url) as response:
-                if response.status == 200:
-                    locations = await response.json()
-                    for location in locations:
-                        if location.get('iata') == colo.upper():
-                            return location.get('cca2', colo.upper())
-        except Exception:
-            pass
+        # 如果映射表中没有，尝试通过简单的规则推断
+        colo_upper = colo.upper()
 
-        # 如果都失败了，返回原始colo代码
-        return colo.upper()
+        # 一些常见的推断规则
+        if len(colo_upper) == 3:
+            # 大多数3字母代码是机场代码，可以做一些基本推断
+            if colo_upper.startswith('Y'):  # 加拿大机场代码通常以Y开头
+                return 'CA'
+            elif colo_upper in ['JFK', 'LGA', 'BWI', 'DCA']:  # 美国主要机场
+                return 'US'
+
+        # 如果都失败了，返回原始colo代码作为国家代码
+        return colo_upper
 
     async def test_ips_with_concurrency(self, ips: List[str], port: int) -> List[IPResult]:
         """并发测试IP列表"""

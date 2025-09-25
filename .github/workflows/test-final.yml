@@ -1,0 +1,73 @@
+name: Final Test - IP Optimizer
+
+on:
+  workflow_dispatch:
+    inputs:
+      country:
+        description: '目标国家代码'
+        required: false
+        default: 'US'
+        type: string
+      count:
+        description: '目标IP数量'
+        required: false
+        default: '3'
+        type: string
+
+jobs:
+  test-ip-optimizer:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install aiohttp requests
+        
+    - name: Test network connectivity
+      run: |
+        echo "🌐 测试网络连接..."
+        curl -I --connect-timeout 5 https://1.1.1.1/dns-query || echo "Cloudflare DNS API 连接失败"
+        curl -I --connect-timeout 5 https://www.cloudflare.com || echo "Cloudflare 网站连接失败"
+        
+    - name: Run IP optimizer (small test)
+      run: |
+        echo "🧪 运行小规模测试..."
+        python ip_optimizer.py \
+          --country "${{ github.event.inputs.country || 'US' }}" \
+          --count "${{ github.event.inputs.count || '3' }}" \
+          --port 443 \
+          --max-ips 20 \
+          --concurrent 4 \
+          --output "test_nodes.txt"
+      env:
+        PYTHONUNBUFFERED: 1
+        PYTHONIOENCODING: utf-8
+        GITHUB_ACTIONS: true
+        
+    - name: Verify results
+      run: |
+        if [ -f "test_nodes.txt" ]; then
+          echo "✅ 测试成功！生成的节点文件:"
+          echo "文件大小: $(wc -l < test_nodes.txt) 行"
+          echo "内容预览:"
+          cat test_nodes.txt
+        else
+          echo "❌ 未生成节点文件"
+          exit 1
+        fi
+        
+    - name: Upload results
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-nodes-${{ github.event.inputs.country || 'US' }}
+        path: test_nodes.txt
+        retention-days: 7

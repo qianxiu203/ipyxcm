@@ -47,6 +47,15 @@ jobs:
         python -m pip install --upgrade pip
         pip install aiohttp
         pip install requests  # 备用HTTP库
+
+    - name: Test network connectivity
+      run: |
+        echo "🌐 测试网络连接..."
+        echo "Testing DNS resolution..."
+        nslookup 1.1.1.1 || echo "DNS resolution failed"
+        echo "Testing HTTP connectivity..."
+        curl -I --connect-timeout 5 https://1.1.1.1/dns-query || echo "Cloudflare DNS API 连接失败"
+        curl -I --connect-timeout 5 https://www.cloudflare.com || echo "Cloudflare 网站连接失败"
         
     - name: Set parameters
       id: params
@@ -70,16 +79,20 @@ jobs:
         
     - name: Run IP optimizer
       run: |
+        echo "🚀 开始运行IP优选脚本..."
+        echo "参数: 国家=${{ steps.params.outputs.country }}, 数量=${{ steps.params.outputs.count }}, 端口=${{ steps.params.outputs.port }}"
+
         python ip_optimizer.py \
           --country "${{ steps.params.outputs.country }}" \
           --count "${{ steps.params.outputs.count }}" \
           --port "${{ steps.params.outputs.port }}" \
-          --max-ips "${{ steps.params.outputs.max_ips }}" \
-          --concurrent 16 \
+          --max-ips 50 \
+          --concurrent 8 \
           --output "nodes.txt"
       env:
         PYTHONUNBUFFERED: 1
         PYTHONIOENCODING: utf-8
+        GITHUB_ACTIONS: true
           
     - name: Check if nodes.txt was created
       run: |
